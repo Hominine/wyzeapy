@@ -8,8 +8,10 @@ import logging
 import time
 from typing import Dict, Any, Optional
 
-from aiohttp import TCPConnector, ClientSession, ContentTypeError
+#rewriting the post/get/patch/delete functions starting from line 254 to use the requests library with requests-cache instead of aiohttp
 
+import requests
+import requests_cache
 from .const import API_KEY, PHONE_ID, APP_NAME, APP_VERSION, SC, SV, PHONE_SYSTEM_TYPE, APP_VER, APP_INFO
 from .exceptions import (
     UnknownApiError,
@@ -250,86 +252,77 @@ class WyzeAuthLib:
                 if key in self.SANITIZE_FIELDS:
                     data[key] = self.SANITIZE_STRING
         return data
+    #rewrite the post/get/patch/delete functions starting from line 256 to use the requests library with requests-cache instead of aiohttp
 
-    async def post(self, url, json=None, headers=None, data=None) -> Dict[Any, Any]:
-        async with ClientSession(connector=TCPConnector(ttl_dns_cache=(30 * 60))) as _session:
-            response = await _session.post(url, json=json, headers=headers, data=data)
-            # Relocated these below as the sanitization seems to modify the data before it goes to the post.
-            _LOGGER.debug("Request:")
-            _LOGGER.debug(f"url: {url}")
-            _LOGGER.debug(f"json: {self.sanitize(json)}")
-            _LOGGER.debug(f"headers: {self.sanitize(headers)}")
-            _LOGGER.debug(f"data: {self.sanitize(data)}")
-            # Log the response.json() if it exists, if not log the response.
-            try:
-                response_json = await response.json()
-                _LOGGER.debug(f"Response Json: {self.sanitize(response_json)}")
-            except ContentTypeError:
-                _LOGGER.debug(f"Response: {response}")
-            return await response.json()
-    
-    async def put(self, url, json=None, headers=None, data=None) -> Dict[Any, Any]:
-        async with ClientSession(connector=TCPConnector(ttl_dns_cache=(30 * 60))) as _session:
-            response = await _session.put(url, json=json, headers=headers, data=data)
-            # Relocated these below as the sanitization seems to modify the data before it goes to the post.
-            _LOGGER.debug("Request:")
-            _LOGGER.debug(f"url: {url}")
-            _LOGGER.debug(f"json: {self.sanitize(json)}")
-            _LOGGER.debug(f"headers: {self.sanitize(headers)}")
-            _LOGGER.debug(f"data: {self.sanitize(data)}")
-            # Log the response.json() if it exists, if not log the response.
-            try:
-                response_json = await response.json()
-                _LOGGER.debug(f"Response Json: {self.sanitize(response_json)}")
-            except ContentTypeError:
-                _LOGGER.debug(f"Response: {response}")
-            return await response.json()
+    def post(self, url, json=None, headers=None, data=None) -> Dict[Any, Any]:
+        requests_cache.install_cache('wyze_cache')
+        response = requests.post(url, json=json, headers=headers, data=data)
+        _LOGGER.debug("Request:")
+        _LOGGER.debug(f"url: {url}")
+        _LOGGER.debug(f"json: {self.sanitize(json)}")
+        _LOGGER.debug(f"headers: {self.sanitize(headers)}")
+        _LOGGER.debug(f"data: {self.sanitize(data)}")
+        try:
+            response_json = response.json()
+            _LOGGER.debug(f"Response Json: {self.sanitize(response_json)}")
+        except ContentTypeError:
+            _LOGGER.debug(f"Response: {response}")
+        return response.json()
 
-    async def get(self, url, headers=None, params=None) -> Dict[Any, Any]:
-        async with ClientSession(connector=TCPConnector(ttl_dns_cache=(30 * 60))) as _session:
-            response = await _session.get(url, params=params, headers=headers)
-            # Relocated these below as the sanitization seems to modify the data before it goes to the post.
-            _LOGGER.debug("Request:")
-            _LOGGER.debug(f"url: {url}")
-            _LOGGER.debug(f"headers: {self.sanitize(headers)}")
-            _LOGGER.debug(f"params: {self.sanitize(params)}")
-            # Log the response.json() if it exists, if not log the response.
-            try:
-                response_json = await response.json()
-                _LOGGER.debug(f"Response Json: {self.sanitize(response_json)}")
-            except ContentTypeError:
-                _LOGGER.debug(f"Response: {response}")
-            return await response.json()
+    def put(self, url, json=None, headers=None, data=None) -> Dict[Any, Any]:
+        requests_cache.install_cache('wyze_cache')
+        response = requests.put(url, json=json, headers=headers, data=data)
+        _LOGGER.debug("Request:")
+        _LOGGER.debug(f"url: {url}")
+        _LOGGER.debug(f"json: {self.sanitize(json)}")
+        _LOGGER.debug(f"headers: {self.sanitize(headers)}")
+        _LOGGER.debug(f"data: {self.sanitize(data)}")
+        try:
+            response_json = response.json()
+            _LOGGER.debug(f"Response Json: {self.sanitize(response_json)}")
+        except ContentTypeError:
+            _LOGGER.debug(f"Response: {response}")
+        return response.json()
 
-    async def patch(self, url, headers=None, params=None, json=None) -> Dict[Any, Any]:
-        async with ClientSession(connector=TCPConnector(ttl_dns_cache=(30 * 60))) as _session:
-            response = await _session.patch(url, headers=headers, params=params, json=json)
-            # Relocated these below as the sanitization seems to modify the data before it goes to the post.
-            _LOGGER.debug("Request:")
-            _LOGGER.debug(f"url: {url}")
-            _LOGGER.debug(f"json: {self.sanitize(json)}")
-            _LOGGER.debug(f"headers: {self.sanitize(headers)}")
-            _LOGGER.debug(f"params: {self.sanitize(params)}")
-            # Log the response.json() if it exists, if not log the response.
-            try:
-                response_json = await response.json()
-                _LOGGER.debug(f"Response Json: {self.sanitize(response_json)}")
-            except ContentTypeError:
-                _LOGGER.debug(f"Response: {response}")
-            return await response.json()
+    def get(self, url, headers=None, params=None) -> Dict[Any, Any]:
+        requests_cache.install_cache('wyze_cache')
+        response = requests.get(url, params=params, headers=headers)
+        _LOGGER.debug("Request:")
+        _LOGGER.debug(f"url: {url}")
+        _LOGGER.debug(f"headers: {self.sanitize(headers)}")
+        _LOGGER.debug(f"params: {self.sanitize(params)}")
+        try:
+            response_json = response.json()
+            _LOGGER.debug(f"Response Json: {self.sanitize(response_json)}")
+        except ContentTypeError:
+            _LOGGER.debug(f"Response: {response}")
+        return response.json()
 
-    async def delete(self, url, headers=None, json=None) -> Dict[Any, Any]:
-        async with ClientSession(connector=TCPConnector(ttl_dns_cache=(30 * 60))) as _session:
-            response = await _session.delete(url, headers=headers, json=json)
-            # Relocated these below as the sanitization seems to modify the data before it goes to the post.
-            _LOGGER.debug("Request:")
-            _LOGGER.debug(f"url: {url}")
-            _LOGGER.debug(f"json: {self.sanitize(json)}")
-            _LOGGER.debug(f"headers: {self.sanitize(headers)}")
-            # Log the response.json() if it exists, if not log the response.
-            try:
-                response_json = await response.json()
-                _LOGGER.debug(f"Response Json: {self.sanitize(response_json)}")
-            except ContentTypeError:
-                _LOGGER.debug(f"Response: {response}")
-            return await response.json()
+    def patch(self, url, headers=None, params=None, json=None) -> Dict[Any, Any]:
+        requests_cache.install_cache('wyze_cache')
+        response = requests.patch(url, headers=headers, params=params, json=json)
+        _LOGGER.debug("Request:")
+        _LOGGER.debug(f"url: {url}")
+        _LOGGER.debug(f"json: {self.sanitize(json)}")
+        _LOGGER.debug(f"headers: {self.sanitize(headers)}")
+        _LOGGER.debug(f"params: {self.sanitize(params)}")
+        try:
+            response_json = response.json()
+            _LOGGER.debug(f"Response Json: {self.sanitize(response_json)}")
+        except ContentTypeError:
+            _LOGGER.debug(f"Response: {response}")
+        return response.json()
+
+    def delete(self, url, headers=None, json=None) -> Dict[Any, Any]:
+        requests_cache.install_cache('wyze_cache')
+        response = requests.delete(url, headers=headers, json=json)
+        _LOGGER.debug("Request:")
+        _LOGGER.debug(f"url: {url}")
+        _LOGGER.debug(f"json: {self.sanitize(json)}")
+        _LOGGER.debug(f"headers: {self.sanitize(headers)}")
+        try:
+            response_json = response.json()
+            _LOGGER.debug(f"Response Json: {self.sanitize(response_json)}")
+        except ContentTypeError:
+            _LOGGER.debug(f"Response: {response}")
+        return response.json()
