@@ -1,14 +1,6 @@
-#  Copyright (c) 2021. Mulliken, LLC - All Rights Reserved
-#  You may use, distribute and modify this code under the terms
-#  of the attached license. You should have received a copy of
-#  the license with this file. If not, please write to:
-#  katie@mulliken.net to receive a copy
-import asyncio
 import logging
 import time
 from typing import Dict, Any, Optional
-
-#rewriting the post/get/patch/delete functions starting from line 254 to use the requests library with requests-cache instead of aiohttp
 
 import requests
 import requests_cache
@@ -22,9 +14,7 @@ from .utils import create_password, check_for_errors_standard
 
 _LOGGER = logging.getLogger(__name__)
 
-
 class Token:
-    # Token is apparently good for 24 hours, so refresh after 23
     REFRESH_INTERVAL = 82800
 
     def __init__(self, access_token, refresh_token, refresh_time: float = None):
@@ -57,7 +47,6 @@ class Token:
     def refresh_time(self):
         return self._refresh_time
 
-
 class WyzeAuthLib:
     token: Optional[Token] = None
     SANITIZE_FIELDS = [
@@ -89,11 +78,10 @@ class WyzeAuthLib:
         self.session_id = ""
         self.verification_id = ""
         self.two_factor_type = None
-        self.refresh_lock = asyncio.Lock()
         self.token_callback = token_callback
 
     @classmethod
-    async def create(
+    def create(
         cls,
         username=None,
         password=None,
@@ -119,7 +107,7 @@ class WyzeAuthLib:
 
         return self
 
-    async def get_token_with_username_password(
+    def get_token_with_username_password(
         self, username, password, key_id, api_key
     ) -> Token:
         self._username = username
@@ -134,7 +122,7 @@ class WyzeAuthLib:
             "User-Agent": "wyzeapy",
         }
 
-        response_json = await self.post(
+        response_json = self.post(
             "https://auth-prod.api.wyze.com/api/user/login",
             headers=headers,
             json=login_payload,
@@ -147,13 +135,10 @@ class WyzeAuthLib:
             raise UnknownApiError(response_json)
 
         if response_json.get('mfa_options') is not None:
-            # Store the TOTP verification setting in the token and raise exception
             if "TotpVerificationCode" in response_json.get("mfa_options"):
                 self.two_factor_type = "TOTP"
-                # Store the verification_id from the response, it's needed for the 2fa payload.
                 self.verification_id = response_json["mfa_details"]["totp_apps"][0]["app_id"]
                 raise TwoFactorAuthenticationEnabled
-                # 2fa using SMS, store sms as 2fa method in token, send the code then raise exception
             if "PrimaryPhone" in response_json.get("mfa_options"):
                 self.two_factor_type = "SMS"
                 params = {
@@ -161,23 +146,21 @@ class WyzeAuthLib:
                     'sessionId': response_json.get("sms_session_id"),
                     'userId': response_json['user_id'],
                 }
-                response_json = await self.post('https://auth-prod.api.wyze.com/user/login/sendSmsCode',
-                                                headers=headers, data=params)
-                # Store the session_id from this response, it's needed for the 2fa payload.
+                response_json = self.post('https://auth-prod.api.wyze.com/user/login/sendSmsCode',
+                                          headers=headers, data=params)
                 self.session_id = response_json['session_id']
                 raise TwoFactorAuthenticationEnabled
 
         self.token = Token(response_json['access_token'], response_json['refresh_token'])
-        await self.token_callback(self.token)
+        self.token_callback(self.token)
         return self.token
 
-    async def get_token_with_2fa(self, verification_code) -> Token:
+    def get_token_with_2fa(self, verification_code) -> Token:
         headers = {
             'Phone-Id': PHONE_ID,
             'User-Agent': APP_INFO,
             'X-API-Key': API_KEY,
         }
-        # TOTP Payload
         if self.two_factor_type == "TOTP":
             payload = {
                 "email": self._username,
@@ -186,7 +169,6 @@ class WyzeAuthLib:
                 "verification_id": self.verification_id,
                 "verification_code": verification_code
             }
-        # SMS Payload
         else:
             payload = {
                 "email": self._username,
@@ -196,26 +178,24 @@ class WyzeAuthLib:
                 "verification_code": verification_code
             }
 
-        response_json = await self.post(
+        response_json = self.post(
             'https://auth-prod.api.wyze.com/user/login',
             headers=headers, json=payload)
 
         self.token = Token(response_json['access_token'], response_json['refresh_token'])
-        await self.token_callback(self.token)
+        self.token_callback(self.token)
         return self.token
 
     @property
     def should_refresh(self) -> bool:
         return time.time() >= self.token.refresh_time
 
-    async def refresh_if_should(self):
+    def refresh_if_should(self):
         if self.should_refresh or self.token.expired:
-            async with self.refresh_lock:
-                if self.should_refresh or self.token.expired:
-                    _LOGGER.debug("Should refresh. Refreshing...")
-                    await self.refresh()
+            _LOGGER.debug("Should refresh. Refreshing...")
+            self.refresh()
 
-    async def refresh(self) -> None:
+    def refresh(self) -> None:
         payload = {
             "phone_id": PHONE_ID,
             "app_name": APP_NAME,
@@ -232,27 +212,23 @@ class WyzeAuthLib:
             "X-API-Key": API_KEY
         }
 
-        async with ClientSession(connector=TCPConnector(ttl_dns_cache=(30 * 60))) as _session:
-            response = await _session.post("https://api.wyzecam.com/app/user/refresh_token", headers=headers,
-                                           json=payload)
-        response_json = await response.json()
+        response = requests.post("https://api.wyzecam.com/app/user/refresh_token", headers=headers, json=payload)
+        response_json = response.json()
         check_for_errors_standard(self, response_json)
 
         self.token.access_token = response_json['data']['access_token']
         self.token.refresh_token = response_json['data']['refresh_token']
-        await self.token_callback(self.token)
+        self.token_callback(self.token)
         self.token.expired = False
 
     def sanitize(self, data):
         if data and type(data) is dict:
-            # value is unused, but it prevents us from having to split the tuple to check against SANITIZE_FIELDS
             for key, value in data.items():
                 if type(value) is dict:
                     data[key] = self.sanitize(value)
                 if key in self.SANITIZE_FIELDS:
                     data[key] = self.SANITIZE_STRING
         return data
-    #rewrite the post/get/patch/delete functions starting from line 256 to use the requests library with requests-cache instead of aiohttp
 
     def post(self, url, json=None, headers=None, data=None) -> Dict[Any, Any]:
         requests_cache.install_cache('wyze_cache')
@@ -265,7 +241,7 @@ class WyzeAuthLib:
         try:
             response_json = response.json()
             _LOGGER.debug(f"Response Json: {self.sanitize(response_json)}")
-        except ContentTypeError:
+        except requests.exceptions.ContentDecodingError:
             _LOGGER.debug(f"Response: {response}")
         return response.json()
 
@@ -280,7 +256,7 @@ class WyzeAuthLib:
         try:
             response_json = response.json()
             _LOGGER.debug(f"Response Json: {self.sanitize(response_json)}")
-        except ContentTypeError:
+        except requests.exceptions.ContentDecodingError:
             _LOGGER.debug(f"Response: {response}")
         return response.json()
 
@@ -294,7 +270,7 @@ class WyzeAuthLib:
         try:
             response_json = response.json()
             _LOGGER.debug(f"Response Json: {self.sanitize(response_json)}")
-        except ContentTypeError:
+        except requests.exceptions.ContentDecodingError:
             _LOGGER.debug(f"Response: {response}")
         return response.json()
 
@@ -309,7 +285,7 @@ class WyzeAuthLib:
         try:
             response_json = response.json()
             _LOGGER.debug(f"Response Json: {self.sanitize(response_json)}")
-        except ContentTypeError:
+        except requests.exceptions.ContentDecodingError:
             _LOGGER.debug(f"Response: {response}")
         return response.json()
 
@@ -323,6 +299,7 @@ class WyzeAuthLib:
         try:
             response_json = response.json()
             _LOGGER.debug(f"Response Json: {self.sanitize(response_json)}")
-        except ContentTypeError:
+        except requests.exceptions.ContentDecodingError:
             _LOGGER.debug(f"Response: {response}")
         return response.json()
+```
